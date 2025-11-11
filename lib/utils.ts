@@ -7,22 +7,41 @@ export function cn(...inputs: ClassValue[]) {
 
 // Form validation utilities
 export interface FormErrors {
+  userName?: string
   jobTitle?: string
   companyName?: string
   jobDescription?: string
+  email?: string
 }
 
-export interface FormData {
+export type ToneType = 'professional' | 'conversational' | 'enthusiastic' | 'formal'
+
+export interface CoverLetterFormData {
+  // User Information
+  userName: string
+  email: string
+  phone: string
+  professionalSummary: string
+  keySkills: string
+
+  // Job Information
   jobTitle: string
   companyName: string
   jobDescription: string
   extraNotes: string
+
+  // Tone & Style
+  tone: ToneType
 }
 
-export function validateForm(data: FormData): FormErrors {
+export function validateForm(data: CoverLetterFormData): FormErrors {
   const errors: FormErrors = {}
 
   // Required field validation
+  if (!data.userName.trim()) {
+    errors.userName = "Your name is required"
+  }
+
   if (!data.jobTitle.trim()) {
     errors.jobTitle = "Job title is required"
   }
@@ -35,20 +54,35 @@ export function validateForm(data: FormData): FormErrors {
     errors.jobDescription = "Job description is required"
   }
 
+  // Optional email validation
+  if (data.email.trim() && !isValidEmail(data.email)) {
+    errors.email = "Please enter a valid email address"
+  }
 
   return errors
+}
+
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
 }
 
 export function sanitizeText(text: string): string {
   return text.trim().replace(/\s+/g, ' ')
 }
 
-export function buildPayload(data: FormData) {
+export function buildPayload(data: CoverLetterFormData) {
   return {
+    userName: sanitizeText(data.userName),
+    email: sanitizeText(data.email),
+    phone: sanitizeText(data.phone),
+    professionalSummary: sanitizeText(data.professionalSummary),
+    keySkills: sanitizeText(data.keySkills),
     jobTitle: sanitizeText(data.jobTitle),
     companyName: sanitizeText(data.companyName),
     jobDescription: sanitizeText(data.jobDescription),
-    extraNotes: sanitizeText(data.extraNotes)
+    extraNotes: sanitizeText(data.extraNotes),
+    tone: data.tone
   }
 }
 
@@ -88,7 +122,7 @@ export async function handleCopy(text: string): Promise<boolean> {
 const FORM_STORAGE_KEY = 'coverLetterForm'
 const LETTER_STORAGE_KEY = 'lastGeneratedLetter'
 
-export function persistState(data: FormData) {
+export function persistState(data: CoverLetterFormData) {
   try {
     localStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(data))
   } catch (error) {
@@ -96,7 +130,7 @@ export function persistState(data: FormData) {
   }
 }
 
-export function hydrateState(): FormData | null {
+export function hydrateState(): CoverLetterFormData | null {
   try {
     const stored = localStorage.getItem(FORM_STORAGE_KEY)
     return stored ? JSON.parse(stored) : null

@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
+type ToneType = 'professional' | 'conversational' | 'enthusiastic' | 'formal'
+
 interface GenerateRequest {
+  // User Information
+  userName: string
+  email?: string
+  phone?: string
+  professionalSummary?: string
+  keySkills?: string
+
+  // Job Information
   jobTitle: string
   companyName: string
   jobDescription: string
   extraNotes?: string
-}
 
-// Fixed profile data - replace with your actual profile
-const PROFILE = {
-  name: "Mohammed Isa",
-  email: "mohdisa233@gmail.com",
-  phone: "0450 106 807",
-  skills: "Full-stack development, React, Node.js, TypeScript, JavaScript, Python, MongoDB, Next.js, AI Integration, Web3, Flutter, CSS, C++",
-  experience: "Bachelor of IT student with extensive hands-on experience in web development, mobile applications, AI integration, and project management across multiple companies including Stepsharp Digital, Wemark Real Estate, Beyond India, and Reelstar",
-  achievements: "Led remote team development of Real Estate CRM, built AI-powered chat applications using OpenAI GPT API, managed IT infrastructure and social media strategies, developed SEO-optimized websites, and created multiple notable projects including Ledgerly, DashGen, Hire Sync AI, and Arabic Text Extraction tools"
+  // Tone & Style
+  tone: ToneType
 }
 
 // Project database for intelligent selection based on job requirements
@@ -175,9 +178,9 @@ function selectRelevantProjects(jobDescription: string, jobTitle: string): strin
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateRequest = await request.json()
-    
+
     // Validate required fields
-    if (!body.jobTitle || !body.companyName || !body.jobDescription) {
+    if (!body.userName || !body.jobTitle || !body.companyName || !body.jobDescription) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -186,9 +189,9 @@ export async function POST(request: NextRequest) {
 
     // Generate cover letter using OpenAI
     const coverLetter = await generateWithOpenAI(body)
-    
+
     return NextResponse.json({ body: coverLetter })
-    
+
   } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json(
@@ -198,34 +201,73 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Mock function kept for testing purposes (not currently used in production)
 function generateMockCoverLetter(data: GenerateRequest): string {
-  const { jobTitle, companyName, jobDescription, extraNotes } = data
-  
+  const { userName, email, phone, jobTitle, companyName, extraNotes, professionalSummary, keySkills } = data
+
   return `Dear Hiring Manager,
 
-I am writing to express my strong interest in the ${jobTitle} position at ${companyName}. With ${PROFILE.experience}, I am excited about the opportunity to contribute to your team.
+I am writing to express my strong interest in the ${jobTitle} position at ${companyName}.${professionalSummary ? ` ${professionalSummary}` : ''}
 
-Based on the job description, I believe my background in ${PROFILE.skills} aligns perfectly with your requirements. ${PROFILE.achievements}, which demonstrates my ability to deliver results and drive innovation.
+${keySkills ? `My background in ${keySkills} aligns well with your requirements.` : ''}
 
 Key qualifications that make me an ideal candidate:
-• Extensive experience with the technologies mentioned in your job posting
+• Relevant experience with the technologies mentioned in your job posting
 • Proven track record of successful project delivery
 • Strong problem-solving and analytical skills
 • Excellent communication and teamwork abilities
 
 ${extraNotes ? `Additional considerations: ${extraNotes}` : ''}
 
-I am particularly drawn to ${companyName} because of your reputation for innovation and excellence. I would welcome the opportunity to discuss how my skills and experience can contribute to your team's continued success.
+I am particularly drawn to ${companyName} and would welcome the opportunity to discuss how my skills and experience can contribute to your team's continued success.
 
 Thank you for considering my application. I look forward to hearing from you soon.
 
 Best regards,
-${PROFILE.name}
-${PROFILE.email}
-${PROFILE.phone}
+${userName}${email ? `\n${email}` : ''}${phone ? `\n${phone}` : ''}
 
 ---
 This cover letter was generated based on the job requirements and tailored to highlight relevant experience and skills.`
+}
+
+// Helper function to get tone-specific instructions
+function getToneInstructions(tone: ToneType): string {
+  const toneGuides = {
+    conversational: `
+      - Use casual, conversational language
+      - Sound human and authentic, not corporate
+      - Focus on problem-solving mindset
+      - Keep sentences short and punchy
+      - Use "I" statements confidently
+      - No buzzwords or corporate speak
+      - Make it feel personal and genuine`,
+
+    professional: `
+      - Use professional but approachable language
+      - Balance formality with personality
+      - Demonstrate competence without being overly casual
+      - Use complete sentences with proper structure
+      - Show enthusiasm while maintaining professionalism
+      - Avoid slang but don't be stiff`,
+
+    enthusiastic: `
+      - Show genuine excitement about the opportunity
+      - Use energetic and positive language
+      - Express passion for the work and company
+      - Be dynamic and engaging in tone
+      - Demonstrate eagerness to contribute
+      - Maintain professionalism while showing personality`,
+
+    formal: `
+      - Use traditional, formal business language
+      - Maintain professional distance
+      - Use complete, well-structured sentences
+      - Follow traditional cover letter conventions
+      - Be respectful and courteous throughout
+      - Demonstrate seriousness and commitment`
+  }
+
+  return toneGuides[tone]
 }
 
 async function generateWithOpenAI(data: GenerateRequest): Promise<string> {
@@ -233,10 +275,17 @@ async function generateWithOpenAI(data: GenerateRequest): Promise<string> {
     apiKey: process.env.OPENAI_API_KEY,
   })
 
-  // Select relevant projects based on job requirements
+  // Select relevant projects based on job requirements (if we still want to use this feature)
   const relevantProjects = selectRelevantProjects(data.jobDescription, data.jobTitle)
 
-  const prompt = `You are Mohammed Isa writing a cover letter. Use this EXACT template structure and writing style - conversational, human, and problem-solving focused.
+  // Build user profile section
+  const userProfile = `
+- Name: ${data.userName}${data.email ? `\n- Email: ${data.email}` : ''}${data.phone ? `\n- Phone: ${data.phone}` : ''}${data.keySkills ? `\n- Skills: ${data.keySkills}` : ''}${data.professionalSummary ? `\n- Experience: ${data.professionalSummary}` : ''}`
+
+  // Get tone-specific instructions
+  const toneInstructions = getToneInstructions(data.tone)
+
+  const prompt = `You are ${data.userName} writing a cover letter for a job application.
 
 **Job Information:**
 - Position: ${data.jobTitle}
@@ -245,57 +294,31 @@ async function generateWithOpenAI(data: GenerateRequest): Promise<string> {
 - Additional Notes: ${data.extraNotes || 'None'}
 
 **Your Profile:**
-- Name: ${PROFILE.name}
-- Email: ${PROFILE.email}
-- Phone: ${PROFILE.phone}
-- Skills: ${PROFILE.skills}
-- Experience: ${PROFILE.experience}
-- Key Achievements: ${PROFILE.achievements}
+${userProfile}
 
-**Relevant Projects (Select 3-4 most relevant):**
-${relevantProjects.map(project => `- ${project}`).join('\n')}
+**Writing Tone:** ${data.tone.charAt(0).toUpperCase() + data.tone.slice(1)}
 
-**STRICT TEMPLATE TO FOLLOW:**
+**TONE & STYLE REQUIREMENTS:**
+${toneInstructions}
 
-[Opening Hook - Personal philosophy about work]
-I like solving problems that other people run from. I don't fix tickets for the count. I fix them because I like leaving systems better than I found them. That's what I want to keep doing, and [COMPANY NAME] feels like the right place to do that with the right people.
+**STRUCTURE GUIDELINES:**
+1. Opening: Strong hook that shows genuine interest in the company/role
+2. Introduction: Brief introduction connecting your background to the role
+3. Qualifications: Highlight 2-3 key qualifications that match the job requirements
+4. Value Proposition: Explain what you bring to the company
+5. Closing: Professional closing with clear call to action
 
-Hi
+**IMPORTANT INSTRUCTIONS:**
+- Tailor the content specifically to the job description provided
+- ${data.keySkills ? 'Incorporate the skills mentioned in the profile naturally' : 'Focus on general qualifications'}
+- ${data.professionalSummary ? 'Reference the experience provided in the profile' : 'Keep experience section brief and adaptable'}
+- Match the job description keywords and requirements
+- Keep the letter concise (250-400 words)
+- Make it feel authentic and personal to ${data.userName}
+- Include appropriate contact information at the end
+- Replace generic statements with specific, relevant details from the job description
 
-I'm reaching out to introduce myself for the [JOB TITLE] role at [COMPANY NAME]. What stood out to me wasn't just [mention specific thing from job description], but [mention company values/culture aspect]. That's the kind of environment where I've done my best work.
-
-[Current work paragraph - adapt based on experience]
-Right now I'm [current role/situation based on experience], handling [relevant technical work]. I've [specific technical achievement], [another achievement], and [third achievement]. Alongside that, I [mention documentation/process improvement], and I follow up so [stakeholders] feel heard—not just helped.
-
-[Projects paragraph]
-I've also [led projects/built tools] and built a few tools on the side when things didn't exist, like:
-
-${relevantProjects.map(project => project).join('\n')}
-
-[Personality/Values paragraph]
-I'm self-taught, always curious, and happy to work late if it means things run smoother the next morning. What I'm looking for now is a team that values accountability, growth, and solid work over flash. That's what I see at [COMPANY NAME].
-
-Would love the chance to talk further if there's a fit.
-
-Best
-Mohammed Isa
-mohdisa233@gmail.com
-0450 106 807
-github.com/4mohdisa
-linkedin.com/in/4mohdisa
-
-**WRITING STYLE REQUIREMENTS:**
-- Use casual, conversational language 
-- Sound human and authentic, not corporate
-- Focus on problem-solving mindset
-- Keep sentences short and punchy
-- Use "I" statements confidently
-- No buzzwords or corporate speak
-- Make it feel personal and genuine
-- Adapt technical details to match the job requirements
-- Replace bracketed placeholders with actual job/company info
-
-Generate the cover letter now following this template exactly:`
+Generate the cover letter now:`
 
   const completion = await openai.chat.completions.create({
     messages: [{ role: "user", content: prompt }],

@@ -3,16 +3,20 @@
 import { useState, useEffect } from "react"
 import { InputField } from "@/components/ui/input-field"
 import { TextAreaField } from "@/components/ui/textarea-field"
+import { SelectField } from "@/components/ui/select-field"
 import { CustomButton } from "@/components/ui/custom-button"
 import { CustomCard } from "@/components/ui/custom-card"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { Spinner } from "@/components/ui/spinner"
-import { 
-  FormData, 
-  FormErrors, 
-  validateForm, 
-  buildPayload, 
-  callApi, 
+import { FileUpload } from "@/components/ui/file-upload"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  CoverLetterFormData,
+  FormErrors,
+  ToneType,
+  validateForm,
+  buildPayload,
+  callApi,
   handleCopy,
   persistState,
   hydrateState,
@@ -20,20 +24,60 @@ import {
   hydrateLetter
 } from "@/lib/utils"
 
-const initialFormData: FormData = {
+const initialFormData: CoverLetterFormData = {
+  // User Information
+  userName: "",
+  email: "",
+  phone: "",
+  professionalSummary: "",
+  keySkills: "",
+
+  // Job Information
   jobTitle: "",
   companyName: "",
   jobDescription: "",
-  extraNotes: ""
+  extraNotes: "",
+
+  // Tone & Style
+  tone: "conversational"
 }
 
+const toneOptions = [
+  {
+    value: 'conversational',
+    label: 'Conversational',
+    description: 'Casual, friendly, and authentic tone'
+  },
+  {
+    value: 'professional',
+    label: 'Professional',
+    description: 'Balanced and business-appropriate'
+  },
+  {
+    value: 'enthusiastic',
+    label: 'Enthusiastic',
+    description: 'Energetic and passionate tone'
+  },
+  {
+    value: 'formal',
+    label: 'Formal',
+    description: 'Traditional and highly professional'
+  }
+]
+
 export default function CoverLetterGenerator() {
-  const [formData, setFormData] = useState<FormData>(initialFormData)
+  const [formData, setFormData] = useState<CoverLetterFormData>(initialFormData)
   const [errors, setErrors] = useState<FormErrors>({})
   const [isLoading, setIsLoading] = useState(false)
   const [generatedLetter, setGeneratedLetter] = useState("")
   const [apiError, setApiError] = useState("")
   const [copySuccess, setCopySuccess] = useState(false)
+
+  // Resume upload states
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isParsingResume, setIsParsingResume] = useState(false)
+  const [resumeError, setResumeError] = useState("")
+  const [inputMethod, setInputMethod] = useState<'manual' | 'upload'>('manual')
 
   // Hydrate state on mount
   useEffect(() => {
@@ -53,7 +97,7 @@ export default function CoverLetterGenerator() {
     persistState(formData)
   }, [formData])
 
-  const handleInputChange = (field: keyof FormData, value: string) => {
+  const handleInputChange = (field: keyof CoverLetterFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
     
     // Clear field error when user starts typing
@@ -124,6 +168,53 @@ export default function CoverLetterGenerator() {
     handleGenerate()
   }
 
+  const handleFileSelect = async (file: File) => {
+    setSelectedFile(file)
+    setResumeError("")
+    setIsParsingResume(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('resume', file)
+
+      const response = await fetch('/api/parse-resume', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to parse resume')
+      }
+
+      const parsedData = await response.json()
+
+      // Auto-fill form fields with parsed data
+      setFormData(prev => ({
+        ...prev,
+        userName: parsedData.userName || prev.userName,
+        email: parsedData.email || prev.email,
+        phone: parsedData.phone || prev.phone,
+        professionalSummary: parsedData.professionalSummary || prev.professionalSummary,
+        keySkills: parsedData.keySkills || prev.keySkills,
+      }))
+
+      // Clear any existing errors for auto-filled fields
+      setErrors({})
+
+    } catch (error) {
+      setResumeError(error instanceof Error ? error.message : 'Failed to parse resume')
+      setSelectedFile(null)
+    } finally {
+      setIsParsingResume(false)
+    }
+  }
+
+  const handleFileClear = () => {
+    setSelectedFile(null)
+    setResumeError("")
+  }
+
   const isFormValid = !Object.keys(validateForm(formData)).length
   const wordCount = generatedLetter.split(/\s+/).filter(word => word.length > 0).length
   const charCount = generatedLetter.length
@@ -133,8 +224,8 @@ export default function CoverLetterGenerator() {
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Cover Letter Generator</h1>
-          <p className="text-gray-600">Generate tailored cover letters for your job applications</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">AI Cover Letter Generator</h1>
+          <p className="text-gray-600">Create personalized, professional cover letters tailored to any job application</p>
         </div>
 
         {/* API Error Alert */}
@@ -162,7 +253,145 @@ export default function CoverLetterGenerator() {
           />
         )}
 
-        {/* Form */}
+        {/* User Information Form */}
+        <CustomCard
+          title="Your Information"
+          description="Tell us about yourself so we can personalize your cover letter"
+        >
+          <Tabs defaultValue="manual" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+              <TabsTrigger value="upload">Upload Resume</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="manual" className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InputField
+                  label="Full Name"
+                  required
+                  value={formData.userName}
+                  onChange={(e) => handleInputChange('userName', e.target.value)}
+                  error={errors.userName}
+                  placeholder="e.g. John Doe"
+                />
+                <InputField
+                  label="Email"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  error={errors.email}
+                  placeholder="e.g. john@example.com"
+                />
+              </div>
+
+              <InputField
+                label="Phone Number"
+                value={formData.phone}
+                onChange={(e) => handleInputChange('phone', e.target.value)}
+                placeholder="e.g. +1 (555) 123-4567"
+              />
+
+              <TextAreaField
+                label="Professional Summary"
+                value={formData.professionalSummary}
+                onChange={(e) => handleInputChange('professionalSummary', e.target.value)}
+                placeholder="Brief summary of your experience and background (e.g., '5 years of full-stack development experience with React and Node.js...')"
+                rows={3}
+                showCounter
+              />
+
+              <TextAreaField
+                label="Key Skills"
+                value={formData.keySkills}
+                onChange={(e) => handleInputChange('keySkills', e.target.value)}
+                placeholder="List your relevant skills separated by commas (e.g., 'JavaScript, React, Node.js, Python, AWS...')"
+                rows={2}
+                showCounter
+              />
+            </TabsContent>
+
+            <TabsContent value="upload" className="space-y-4">
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-800">
+                    Upload your resume and we&apos;ll automatically extract your information. You can edit the details after uploading.
+                  </p>
+                </div>
+
+                <FileUpload
+                  onFileSelect={handleFileSelect}
+                  onClear={handleFileClear}
+                  accept=".pdf,.docx,.txt"
+                  maxSize={5}
+                  disabled={isParsingResume}
+                  error={resumeError}
+                  selectedFile={selectedFile}
+                />
+
+                {isParsingResume && (
+                  <div className="flex items-center justify-center py-8">
+                    <Spinner size="md" />
+                    <span className="ml-3 text-sm text-gray-600">
+                      Parsing your resume...
+                    </span>
+                  </div>
+                )}
+
+                {selectedFile && !isParsingResume && (
+                  <div className="space-y-4 pt-4 border-t border-gray-200">
+                    <p className="text-sm font-medium text-gray-900">
+                      Extracted Information (you can edit below):
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <InputField
+                        label="Full Name"
+                        required
+                        value={formData.userName}
+                        onChange={(e) => handleInputChange('userName', e.target.value)}
+                        error={errors.userName}
+                        placeholder="e.g. John Doe"
+                      />
+                      <InputField
+                        label="Email"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        error={errors.email}
+                        placeholder="e.g. john@example.com"
+                      />
+                    </div>
+
+                    <InputField
+                      label="Phone Number"
+                      value={formData.phone}
+                      onChange={(e) => handleInputChange('phone', e.target.value)}
+                      placeholder="e.g. +1 (555) 123-4567"
+                    />
+
+                    <TextAreaField
+                      label="Professional Summary"
+                      value={formData.professionalSummary}
+                      onChange={(e) => handleInputChange('professionalSummary', e.target.value)}
+                      placeholder="Brief summary of your experience and background"
+                      rows={3}
+                      showCounter
+                    />
+
+                    <TextAreaField
+                      label="Key Skills"
+                      value={formData.keySkills}
+                      onChange={(e) => handleInputChange('keySkills', e.target.value)}
+                      placeholder="List your relevant skills separated by commas"
+                      rows={2}
+                      showCounter
+                    />
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </CustomCard>
+
+        {/* Job Information Form */}
         <CustomCard title="Job Details">
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -183,7 +412,6 @@ export default function CoverLetterGenerator() {
                 placeholder="e.g. Tech Corp"
               />
             </div>
-            
 
             <TextAreaField
               label="Job Description and Key Requirements"
@@ -203,6 +431,15 @@ export default function CoverLetterGenerator() {
               placeholder="Any additional information or specific points to highlight..."
               rows={3}
               showCounter
+            />
+
+            <SelectField
+              label="Writing Tone"
+              required
+              value={formData.tone}
+              onValueChange={(value) => handleInputChange('tone', value as ToneType)}
+              options={toneOptions}
+              placeholder="Select a writing tone..."
             />
 
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-3 pt-4">
