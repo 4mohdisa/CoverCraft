@@ -1,4 +1,3 @@
-import fs from 'fs/promises'
 import path from 'path'
 
 interface CoverLetterRecord {
@@ -21,11 +20,20 @@ interface CoverLetterRecord {
   }
 }
 
+// Only import fs at runtime, not during build
+const getFS = async () => {
+  if (typeof window === 'undefined') {
+    return (await import('fs/promises')).default
+  }
+  throw new Error('File system operations are only available on the server')
+}
+
 const DATA_DIR = path.join(process.cwd(), 'data')
 const LETTERS_FILE = path.join(DATA_DIR, 'cover-letters.json')
 
 async function ensureDataDir() {
   try {
+    const fs = await getFS()
     await fs.mkdir(DATA_DIR, { recursive: true })
   } catch (error) {
     console.error('Error creating data directory:', error)
@@ -34,6 +42,7 @@ async function ensureDataDir() {
 
 async function readLetters(): Promise<CoverLetterRecord[]> {
   try {
+    const fs = await getFS()
     const data = await fs.readFile(LETTERS_FILE, 'utf-8')
     return JSON.parse(data)
   } catch {
@@ -43,6 +52,7 @@ async function readLetters(): Promise<CoverLetterRecord[]> {
 
 async function writeLetters(letters: CoverLetterRecord[]): Promise<void> {
   await ensureDataDir()
+  const fs = await getFS()
   await fs.writeFile(LETTERS_FILE, JSON.stringify(letters, null, 2))
 }
 
